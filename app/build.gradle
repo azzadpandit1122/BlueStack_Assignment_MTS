@@ -67,4 +67,6 @@ dependencies {
 
     debugImplementation("com.squareup.leakcanary:leakcanary-android:2.14")
 
+    debugImplementation 'com.github.zerobranch.android-remote-debugger:debugger:1.1.2'
+    releaseImplementation 'com.github.zerobranch.android-remote-debugger:noop:1.1.2'
 }

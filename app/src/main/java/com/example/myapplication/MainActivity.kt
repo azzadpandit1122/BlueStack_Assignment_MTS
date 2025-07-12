@@ -49,27 +49,33 @@ class MainActivity : AppCompatActivity() {
      * SAF folder picker – returns the chosen directory URI.
      */
 
-    private val openDirectoryLauncher:
-            ActivityResultLauncher<Uri?> =
+    private val openDirectoryLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
-            if (treeUri != null) {
-                // Persist permission so we can use it again without prompting
-                val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
-                        Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
-                contentResolver.takePersistableUriPermission(treeUri, flags)
+            runCatching {
+                requireNotNull(treeUri) { "No directory selected" }
 
-                // Try to resolve a real path (will still work on API 30+ if Manage‑All‑Files is granted)
+                /* 1 ─ Persist permission (best‑effort) */
+                val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                try {
+                    contentResolver.takePersistableUriPermission(treeUri, takeFlags)
+                } catch (se: SecurityException) {
+                    contentResolver.takePersistableUriPermission(
+                        treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                }
+
+                /* 2 ─ Resolve real path */
                 val fullPath = treeUri.toFullPath()
-                    ?: treeUri.toString()   // fall back to URI string
+                    ?: error("Folder is not on primary storage")
 
-                Log.d(TAG, "Selected dir path = $fullPath")
-
-                // Call your native scanner
-                val result = NativeLib.scanDirectory(fullPath)
-                binding.sampleText.text = result
-            } else {
-                toast("No directory selected")
+                /* 3 ─ Native scan */
+                NativeLib.scanDirectory(fullPath).also { result ->
+                    binding.sampleText.text = result          // <- UI update
+                }
+            }.onFailure { ex ->
+                Log.e(TAG, "Directory pick failed", ex)
+                toast(ex.message ?: "Something went wrong")
             }
         }
 
@@ -136,116 +142,32 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
 
     /**
-     * Best‑effort conversion of a SAF tree‑URI to an absolute filesystem path.
-     * Returns null on failure.
+     * Convert a SAF tree‑URI to a best‑guess absolute path.
+     * Works for primary and most secondary volumes that are publicly mounted under /storage.
+     *
+     * Returns null if the volume type is unknown (e.g. DownloadsProvider).
      */
     private fun Uri.toFullPath(): String? {
-        // Only works if the URI represents primary storage and the app has broad storage access.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP
-            && DocumentsContract.isDocumentUri(this@MainActivity, this)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP &&
+            DocumentsContract.isDocumentUri(this@MainActivity, this)
         ) {
-            val docId = DocumentsContract.getTreeDocumentId(this)
-            val split = docId.split(':')
-            if (split.size >= 2 && split[0].equals("primary", true)) {
-                return File(Environment.getExternalStorageDirectory(), split[1]).path
+            val docId = DocumentsContract.getTreeDocumentId(this)          // e.g. “primary:DCIM/Camera”
+            val split = docId.split(':', limit = 2)                        // ["primary", "DCIM/Camera"]
+            if (split.size == 2) {
+                val volume = split[0]                                      // "primary" or "XXXX-XXXX"
+                val relativePath = split[1]                                // "DCIM/Camera"
+
+                // Map the volume ID to a real mount point
+                val base = if (volume.equals("primary", true)) {
+                    Environment.getExternalStorageDirectory().path         // /storage/emulated/0
+                } else {
+                    "/storage/$volume"                                     // /storage/XXXX-XXXX  (SD card)
+                }
+
+                return "$base/$relativePath".removeSuffix("/")             // tidy up possible trailing /
             }
         }
         return null
     }
-}
 
-//package com.example.myapplication
-//
-//import android.Manifest
-//import android.app.Activity
-//import android.content.Intent
-//import android.content.pm.PackageManager
-//import android.net.Uri
-//import android.os.Build
-//import android.os.Bundle
-//import android.os.Environment
-//import android.provider.Settings
-//import android.util.Log
-//import android.widget.Toast
-//import androidx.activity.result.contract.ActivityResultContracts
-//import androidx.appcompat.app.AppCompatActivity
-//import androidx.core.app.ActivityCompat
-//import androidx.core.content.ContextCompat
-//import com.example.myapplication.databinding.ActivityMainBinding
-//
-//
-//class MainActivity : AppCompatActivity() {
-//
-//    private lateinit var binding: ActivityMainBinding
-//
-//    companion object {
-//        private const val TAG = "MainActivity"
-//    }
-//
-//    private val storageActivityResultLauncher =
-//        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-//            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-//                if (Environment.isExternalStorageManager()) {
-//                    Log.d(TAG, "Manage External Storage permission granted")
-//                    // proceed with the work that needs the permission
-//                } else {
-//                    Toast.makeText(this, "Storage permission denied", Toast.LENGTH_SHORT).show()
-//                }
-//            } else {
-//                if (result.resultCode == Activity.RESULT_OK &&
-//                    ContextCompat.checkSelfPermission(
-//                        this,
-//                        Manifest.permission.READ_EXTERNAL_STORAGE
-//                    ) == PackageManager.PERMISSION_GRANTED
-//                ) {
-//                    Log.d(TAG, "Legacy storage permission granted")
-//                } else {
-//                    Toast.makeText(this, "Storage permission denied", Toast.LENGTH_SHORT).show()
-//                }
-//            }
-//        }
-//
-//    override fun onCreate(savedInstanceState: Bundle?) {
-//        super.onCreate(savedInstanceState)
-//
-//        binding = ActivityMainBinding.inflate(layoutInflater)
-//        setContentView(binding.root)
-//
-//        // Example of a call to a native method
-//
-//        val folderPath = "/sdcard/Download/libs" // replace with valid path
-//        val result = NativeLib.scanDirectory(folderPath)
-//
-//        binding.sampleText.text = result
-//
-//
-//    }
-//
-//    private val STORAGE_PERMISSION_CODE = 23
-//
-//    private fun requestForStoragePermissions() {
-//        //Android is 11 (R) or above
-//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-//            try {
-//                val intent = Intent()
-//                intent.action = Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION
-//                val uri: Uri = Uri.fromParts("package", this.packageName, null)
-//                intent.data = uri
-//                storageActivityResultLauncher.launch(intent)
-//            } catch (e: Exception) {
-//                val intent = Intent()
-//                intent.action = Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION
-//                storageActivityResultLauncher.launch(intent)
-//            }
-//        } else {
-//            //Below android 11
-//            ActivityCompat.requestPermissions(
-//                this, arrayOf(
-//                    Manifest.permission.WRITE_EXTERNAL_STORAGE,
-//                    Manifest.permission.READ_EXTERNAL_STORAGE
-//                ),
-//                STORAGE_PERMISSION_CODE
-//            )
-//        }
-//    }
-//}
+}
