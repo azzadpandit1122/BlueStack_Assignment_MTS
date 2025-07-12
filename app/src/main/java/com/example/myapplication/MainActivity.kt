@@ -69,8 +69,11 @@ class MainActivity : AppCompatActivity() {
                 val fullPath = treeUri.toFullPath()
                     ?: error("Folder is not on primary storage")
 
+                val displayedPath = fullPath ?: treeUri.toString()
+                binding.pathText.text = displayedPath
+
                 /* 2a ─ >>> show the path immediately <<< */
-                binding.pathText.text = fullPath        // <-- NEW line
+                binding.pathText.text = displayedPath        // <-- NEW line
 
                 /* 3 ─ Native scan */
                 NativeLib.scanDirectory(fullPath).also { result ->
@@ -91,7 +94,8 @@ class MainActivity : AppCompatActivity() {
 
         binding.pickDirButton.setOnClickListener {                        // ← add a button in your layout
             if (isStoragePermissionGranted()) {
-                openDirectoryPicker()
+                //openDirectoryPicker()
+                copyRawAndScan()
             } else {
                 requestStoragePermissions()
             }
@@ -171,6 +175,42 @@ class MainActivity : AppCompatActivity() {
             }
         }
         return null
+    }
+
+    /**
+     * Copy selected res/raw files to cacheDir/raw_copy/
+     * and run the native scanner on that directory.
+     */
+    private fun copyRawAndScan() {
+        // 1. IDs of the files you want to scan
+        val rawIds = intArrayOf(
+            R.raw.libjniloader,       //  <-- put your actual resource names here
+            R.raw.libanw14,       //  <-- put your actual resource names here
+            R.raw.libanw18,       //  <-- put your actual resource names here
+            R.raw.libarm64v8a,       //  <-- put your actual resource names here
+            R.raw.libiomx13,       //  <-- put your actual resource names here
+            R.raw.libudev
+        )
+
+        // 2. Destination folder (cleared each time for simplicity)
+        val outDir = File(cacheDir, "raw_copy").apply {
+            deleteRecursively()
+            mkdirs()
+        }
+// 3. Copy  (add ".so" if missing)
+        rawIds.forEach { resId ->
+            val base = resources.getResourceEntryName(resId)          // "libanw14"
+            val fileName = if (base.endsWith(".so")) base else "$base.so"
+
+            val outFile = File(outDir, fileName)                      // …/libanw14.so
+
+            resources.openRawResource(resId).use { input ->
+                outFile.outputStream().use { output -> input.copyTo(output) }
+            }
+        }
+        // 4. Scan
+        val result = NativeLib.scanDirectory(outDir.absolutePath)
+        binding.sampleText.text = result
     }
 
 }
