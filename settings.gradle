@@ -14,5 +14,5 @@ dependencyResolutionManagement {
         maven { url 'https://jitpack.io' }
     }
 }
-rootProject.name = "My Application"
+rootProject.name = "Lib Arch Counter"
 include ':app'

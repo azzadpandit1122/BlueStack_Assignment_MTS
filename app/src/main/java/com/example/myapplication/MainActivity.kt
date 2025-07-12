@@ -177,18 +177,15 @@ class MainActivity : AppCompatActivity() {
         return null
     }
 
-    /**
-     * Copy selected res/raw files to cacheDir/raw_copy/
-     * and run the native scanner on that directory.
-     */
+
     private fun copyRawAndScan() {
         // 1. IDs of the files you want to scan
         val rawIds = intArrayOf(
-            R.raw.libjniloader,       //  <-- put your actual resource names here
-            R.raw.libanw14,       //  <-- put your actual resource names here
-            R.raw.libanw18,       //  <-- put your actual resource names here
-            R.raw.libarm64v8a,       //  <-- put your actual resource names here
-            R.raw.libiomx13,       //  <-- put your actual resource names here
+            R.raw.libjniloader,
+            R.raw.libanw14,
+            R.raw.libanw18,
+            R.raw.libarm64v8a,
+            R.raw.libiomx13,
             R.raw.libudev
         )
 
@@ -197,20 +194,65 @@ class MainActivity : AppCompatActivity() {
             deleteRecursively()
             mkdirs()
         }
-// 3. Copy  (add ".so" if missing)
-        rawIds.forEach { resId ->
-            val base = resources.getResourceEntryName(resId)          // "libanw14"
-            val fileName = if (base.endsWith(".so")) base else "$base.so"
 
-            val outFile = File(outDir, fileName)                      // …/libanw14.so
+        // 3. Copy raw resources to .so files
+        rawIds.forEach { resId ->
+            val base = resources.getResourceEntryName(resId) // e.g., "libanw14"
+            val fileName = if (base.endsWith(".so")) base else "$base.so"
+            val outFile = File(outDir, fileName)
 
             resources.openRawResource(resId).use { input ->
                 outFile.outputStream().use { output -> input.copyTo(output) }
             }
         }
-        // 4. Scan
-        val result = NativeLib.scanDirectory(outDir.absolutePath)
-        binding.sampleText.text = result
+
+        // 4. Run the native scanner
+        val scanOut = NativeLib.scanDirectory(outDir.absolutePath)
+        Log.d("NativeScan", "\n$scanOut")
+
+        // 5. Create a map of filename -> size
+        val sizeMap = outDir.listFiles()?.associate { it.name to it.length() } ?: emptyMap()
+
+        // 6. Build output table
+        val rowRx = Regex("""^(lib\S+\.so)\s+(\S+)""")
+        val table = buildString {
+            append("Total libraries: ${sizeMap.size}\n\n")
+            append(String.format("%-20s %-12s %10s\n", "File", "ArchType", "Size"))
+            append("=".repeat(44)).append('\n')
+
+            val matchedFiles = mutableSetOf<String>()
+
+            // Parse and print matched scan rows
+            scanOut.lineSequence().forEach { line ->
+                rowRx.find(line.trim())?.let { match ->
+                    val (file, arch) = match.destructured
+                    val size = sizeMap[file] ?: 0L
+                    matchedFiles += file
+                    append(
+                        String.format(
+                            "%-20s %-12s %10s\n",
+                            file, arch,
+                            android.text.format.Formatter.formatFileSize(this@MainActivity, size)
+                        )
+                    )
+                }
+            }
+
+            // Fallback for any missing file entries
+            sizeMap.keys.subtract(matchedFiles).forEach { file ->
+                val size = sizeMap[file] ?: 0L
+                append(
+                    String.format(
+                        "%-20s %-12s %10s\n",
+                        file, "unknown",
+                        android.text.format.Formatter.formatFileSize(this@MainActivity, size)
+                    )
+                )
+            }
+        }
+
+        // 7. Display result in TextView
+        binding.sampleText.text = table
     }
 
 }
