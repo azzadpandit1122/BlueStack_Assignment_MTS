@@ -1,6 +1,6 @@
-# 📦 Library Architecture Determination (Android + NDK)
+# Library Architecture Determination (Android + NDK)
 
-## 🔍 Overview
+## Overview
 
 This native C++ tool (built with Android NDK) scans a directory for `.so` shared libraries and reports the CPU architecture of each valid ELF file.
 
