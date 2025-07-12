@@ -39,7 +39,8 @@ class MainActivity : AppCompatActivity() {
     private val storagePermissionLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             if (isStoragePermissionGranted()) {
-                openDirectoryPicker()        // we can now pick a folder
+                //openDirectoryPicker()        // we can now pick a folder
+                copyRawAndScan()
             } else {
                 toast("Storage permission denied")
             }
