@@ -69,6 +69,9 @@ class MainActivity : AppCompatActivity() {
                 val fullPath = treeUri.toFullPath()
                     ?: error("Folder is not on primary storage")
 
+                /* 2a ─ >>> show the path immediately <<< */
+                binding.pathText.text = fullPath        // <-- NEW line
+
                 /* 3 ─ Native scan */
                 NativeLib.scanDirectory(fullPath).also { result ->
                     binding.sampleText.text = result          // <- UI update
