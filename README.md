@@ -74,6 +74,12 @@ android {
     }
 }
 ```
+
+### Use in Android App 
+```kotlin
+        val scanOut = NativeLib.scanDirectory(outDir.absolutePath)
+        Log.d("NativeScan", "\n$scanOut")
+```
 ### Output
 ```text
 libfoo.so  → arm64-v8a  
